@@ -1,0 +1,129 @@
+<div
+  class="min-h-screen flex items-center justify-center bg-slate-950 px-4 py-12"
+>
+  <div
+    class="w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-900/80 p-8 shadow-xl backdrop-blur"
+  >
+    <h1 class="text-3xl font-semibold tracking-tight text-white">
+      Task management
+    </h1>
+    <p class="mt-1 text-base text-slate-400">
+      Sign in with your organization account (JWT).
+    </p>
+    <form class="mt-8 space-y-4" [formGroup]="form" (ngSubmit)="submit()">
+      <div>
+        <label class="block text-sm font-medium text-slate-300" for="email"
+          >Email</label
+        >
+        <input
+          id="email"
+          type="email"
+          formControlName="email"
+          class="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-3 text-base text-white outline-none ring-emerald-500/40 focus:border-emerald-500 focus:ring-2"
+        />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-300" for="pw"
+          >Password</label
+        >
+        <input
+          id="pw"
+          type="password"
+          formControlName="password"
+          class="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-3 text-base text-white outline-none ring-emerald-500/40 focus:border-emerald-500 focus:ring-2"
+        />
+      </div>
+      @if (error()) {
+        <p class="text-base text-red-400">{{ error() }}</p>
+      }
+      <button
+        type="submit"
+        [disabled]="loading()"
+        class="w-full rounded-lg bg-emerald-600 py-3 text-base font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+      >
+        {{ loading() ? 'Signing in…' : 'Sign in' }}
+      </button>
+    </form>
+
+    <section
+      class="mt-8 rounded-xl border border-slate-800/90 bg-slate-950/50 p-4 ring-1 ring-white/[0.04] sm:p-5"
+      aria-label="Demo accounts"
+    >
+      <h2
+        class="text-xs font-semibold uppercase tracking-wider text-emerald-500/90"
+      >
+        Demo accounts
+      </h2>
+      <p class="mt-1.5 text-xs leading-relaxed text-slate-500">
+        Same password for every row. Click a row to copy the email into the
+        field above (password stays filled).
+      </p>
+
+      <div
+        class="mt-4 rounded-lg border border-dashed border-slate-700/80 bg-slate-900/40 px-3 py-2 text-center text-xs text-slate-500"
+      >
+        Password is identical for every account below — select to copy:
+        <code
+          class="ml-1 select-all rounded bg-slate-950 px-2 py-0.5 font-mono text-slate-300 ring-1 ring-slate-800"
+          >{{ demoPassword }}</code
+        >
+      </div>
+
+      @for (org of demoOrgs; track org.team; let i = $index) {
+        <div
+          class="mt-5"
+          [class.border-t]="i > 0"
+          [class.border-slate-800/80]="i > 0"
+          [class.pt-5]="i > 0"
+        >
+          <h3 class="text-sm font-semibold tracking-tight text-white">
+            {{ org.team }}
+          </h3>
+          <p class="mt-0.5 text-xs text-slate-500">Team / organization</p>
+          <div
+            class="mt-2 overflow-x-auto rounded-lg border border-slate-800/90 bg-slate-950/30"
+          >
+            <table class="w-full min-w-[min(100%,420px)] text-left text-sm">
+              <thead>
+                <tr
+                  class="border-b border-slate-800 bg-slate-900/50 text-xs font-semibold uppercase tracking-wide text-slate-500"
+                >
+                  <th scope="col" class="px-3 py-2.5 sm:px-4">Role</th>
+                  <th scope="col" class="px-3 py-2.5 sm:px-4">Email</th>
+                  <th scope="col" class="whitespace-nowrap px-3 py-2.5 sm:px-4">
+                    Password
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="text-slate-300">
+                @for (u of org.users; track u.email) {
+                  <tr
+                    class="border-b border-slate-800/50 transition last:border-0 hover:bg-slate-800/40"
+                  >
+                    <td class="whitespace-nowrap px-3 py-2.5 font-medium text-slate-200 sm:px-4">
+                      {{ u.label }}
+                    </td>
+                    <td class="min-w-0 px-3 py-2.5 sm:px-4">
+                      <button
+                        type="button"
+                        class="w-full max-w-[220px] break-all text-left font-mono text-xs text-emerald-300/95 underline decoration-emerald-700/50 underline-offset-2 hover:text-emerald-200 hover:decoration-emerald-500 sm:max-w-none sm:text-sm"
+                        (click)="useDemoEmail(u.email)"
+                      >
+                        {{ u.email }}
+                      </button>
+                    </td>
+                    <td
+                      class="select-text whitespace-nowrap px-3 py-2.5 font-mono text-xs text-slate-400 sm:px-4 sm:text-sm"
+                    >
+                      {{ demoPassword }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      }
+    </section>
+  </div>
+</div>

@@ -1,0 +1,15 @@
+{
+  "name": "@task-mgmt/auth",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "peerDependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@task-mgmt/data": "0.0.1"
+  },
+  "dependencies": {
+    "tslib": "^2.3.0"
+  }
+}

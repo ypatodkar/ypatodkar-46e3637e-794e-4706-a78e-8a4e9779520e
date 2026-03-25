@@ -1,0 +1,102 @@
+<div
+  class="overflow-hidden rounded-2xl border border-slate-800/80 bg-gradient-to-b from-slate-900/80 to-slate-950/90 shadow-lg shadow-black/20 ring-1 ring-white/[0.04]"
+>
+  <div
+    class="flex flex-wrap items-center gap-2 border-b border-slate-800/80 bg-slate-950/40 px-4 py-3.5 sm:px-5"
+  >
+    <span
+      class="inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]"
+      aria-hidden="true"
+    ></span>
+    <h3 class="text-base font-semibold tracking-tight text-white">
+      {{ node().name }}
+    </h3>
+    <span
+      class="rounded-md bg-slate-800/80 px-2 py-0.5 text-xs font-medium text-slate-400 ring-1 ring-slate-700/50"
+      >{{ node().users.length }}
+      {{ node().users.length === 1 ? 'member' : 'members' }}</span
+    >
+  </div>
+  @if (node().users.length) {
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[520px] text-left text-sm">
+        <thead
+          class="border-b border-slate-800/80 bg-slate-950/60 text-xs font-semibold uppercase tracking-wider text-slate-500"
+        >
+          <tr>
+            <th class="px-4 py-3 font-semibold sm:px-5">Name</th>
+            <th class="px-4 py-3 font-semibold sm:px-5">Email</th>
+            <th class="px-4 py-3 font-semibold sm:px-5">Role</th>
+            <th class="px-4 py-3 font-semibold sm:px-5">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          @for (u of node().users; track u.id) {
+            <tr
+              class="border-b border-slate-800/60 transition last:border-0 hover:bg-slate-900/50"
+            >
+              <td class="px-4 py-3 font-medium text-white sm:px-5">{{ u.name }}</td>
+              <td class="max-w-[200px] truncate px-4 py-3 text-slate-400 sm:px-5" [title]="u.email">{{ u.email }}</td>
+              <td class="px-4 py-3 sm:px-5">
+                <span
+                  class="inline-flex rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wide ring-1"
+                  [ngClass]="{
+                    'bg-violet-950/55 text-violet-200 ring-violet-800/45': u.role === UserRole.OWNER,
+                    'bg-sky-950/50 text-sky-200 ring-sky-800/40': u.role === UserRole.ADMIN,
+                    'bg-slate-800/90 text-slate-300 ring-slate-700/50': u.role === UserRole.VIEWER
+                  }"
+                  >{{ u.role }}</span
+                >
+              </td>
+              <td class="px-4 py-3 sm:px-5">
+                @if (u.role === UserRole.OWNER) {
+                  <span class="text-sm text-slate-600">—</span>
+                } @else if (u.role === UserRole.VIEWER) {
+                  <button
+                    type="button"
+                    class="rounded-lg border border-emerald-800/50 bg-emerald-950/25 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:border-emerald-600/60 hover:bg-emerald-950/45"
+                    (click)="promote.emit(u)"
+                  >
+                    Promote to Admin
+                  </button>
+                } @else {
+                  <button
+                    type="button"
+                    class="rounded-lg border border-amber-800/50 bg-amber-950/20 px-3 py-1.5 text-xs font-medium text-amber-200 transition hover:border-amber-600/50 hover:bg-amber-950/40"
+                    (click)="demote.emit(u)"
+                  >
+                    Demote to Viewer
+                  </button>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  } @else {
+    <p class="px-5 py-6 text-center text-sm text-slate-500">
+      No members in this organization.
+    </p>
+  }
+  @if (node().children.length) {
+    <div
+      class="space-y-4 border-t border-slate-800/80 bg-slate-950/30 p-4 pl-4 sm:p-5 sm:pl-8"
+    >
+      <p
+        class="text-xs font-semibold uppercase tracking-wider text-slate-500"
+      >
+        Child organizations
+      </p>
+      @for (c of node().children; track c.id) {
+        <div class="relative border-l-2 border-violet-500/50 pl-4 sm:pl-5">
+          <app-team-org-branch
+            [node]="c"
+            (promote)="promote.emit($event)"
+            (demote)="demote.emit($event)"
+          />
+        </div>
+      }
+    </div>
+  }
+</div>
