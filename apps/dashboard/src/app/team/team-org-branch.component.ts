@@ -19,4 +19,5 @@ export class TeamOrgBranchComponent {
   readonly UserRole = UserRole;
   readonly promote = output<OrgUserView>();
   readonly demote = output<OrgUserView>();
+  readonly openPermissions = output<OrgUserView>();
 }

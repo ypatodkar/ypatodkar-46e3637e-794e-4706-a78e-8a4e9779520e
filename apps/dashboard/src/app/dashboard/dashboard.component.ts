@@ -14,6 +14,12 @@ import type {
   TaskView,
 } from '@task-mgmt/data';
 import {
+  defaultTeamPermissionsForRole,
+  effectiveTeamPermissions,
+  TEAM_PERMISSION_KEYS,
+  TEAM_PERMISSION_LABELS,
+  type TeamPermissionKey,
+  type TeamPermissionMap,
   TaskCategory,
   TaskPriority,
   TaskStatus,
@@ -107,6 +113,23 @@ export class DashboardComponent implements OnInit {
     return base;
   });
 
+  /** Per-column drop targets. Viewers may only drag from In progress → Done (plus reorder within In progress). */
+  connectedListsForColumn(status: TaskStatus): string[] {
+    if (this.auth.user()?.role !== UserRole.VIEWER) {
+      return this.connectedLists();
+    }
+    switch (status) {
+      case TaskStatus.OPEN:
+        return ['list-OPEN'];
+      case TaskStatus.IN_PROGRESS:
+        return ['list-IN_PROGRESS', 'list-DONE'];
+      case TaskStatus.DONE:
+        return ['list-DONE', 'list-IN_PROGRESS'];
+      case TaskStatus.VERIFIED:
+        return ['list-VERIFIED'];
+    }
+  }
+
   readonly createForm = this.fb.nonNullable.group({
     title: ['', Validators.required],
     description: [''],
@@ -131,6 +154,12 @@ export class DashboardComponent implements OnInit {
   readonly taskPendingDelete = signal<TaskView | null>(null);
   readonly deleteInProgress = signal(false);
 
+  readonly teamPermissionKeys = TEAM_PERMISSION_KEYS;
+  readonly teamPermissionLabels = TEAM_PERMISSION_LABELS;
+  readonly teamPermissionsUser = signal<OrgUserView | null>(null);
+  readonly teamPermsDraft = signal<TeamPermissionMap | null>(null);
+  readonly teamPermsSaving = signal(false);
+
   ngOnInit(): void {
     this.loadTasks();
     this.loadOrgUsersIfNeeded();
@@ -144,7 +173,7 @@ export class DashboardComponent implements OnInit {
   }
 
   loadOrgUsersIfNeeded(): void {
-    if (!this.canManageTasks()) {
+    if (!this.auth.user()) {
       return;
     }
     this.usersApi.list().subscribe((users) => this.orgUsers.set(users));
@@ -212,7 +241,9 @@ export class DashboardComponent implements OnInit {
     const u = this.auth.user();
     if (!u) return false;
     if (u.role === UserRole.VIEWER) {
-      return t.assigneeId === u.id;
+      return (
+        t.assigneeId === u.id && t.status === TaskStatus.IN_PROGRESS
+      );
     }
     return true;
   }
@@ -223,8 +254,13 @@ export class DashboardComponent implements OnInit {
       return;
     }
     if (this.auth.user()?.role === UserRole.VIEWER) {
-      if (targetStatus === TaskStatus.VERIFIED) {
-        return;
+      if (event.previousContainer !== event.container) {
+        if (
+          event.previousContainer.id !== 'list-IN_PROGRESS' ||
+          targetStatus !== TaskStatus.DONE
+        ) {
+          return;
+        }
       }
     }
     if (event.previousContainer === event.container) {
@@ -375,6 +411,79 @@ export class DashboardComponent implements OnInit {
   demoteToViewer(u: OrgUserView): void {
     this.usersApi.updateRole(u.id, UserRole.VIEWER).subscribe(() => {
       this.loadTeamData();
+    });
+  }
+
+  openTeamPermissionsModal(u: OrgUserView): void {
+    this.teamPermissionsUser.set(u);
+    this.teamPermsDraft.set(
+      effectiveTeamPermissions(u.role, u.teamPermissionOverrides ?? null)
+    );
+  }
+
+  closeTeamPermissionsModal(): void {
+    this.teamPermissionsUser.set(null);
+    this.teamPermsDraft.set(null);
+    this.teamPermsSaving.set(false);
+  }
+
+  canToggleTeamPermission(key: TeamPermissionKey, role: UserRole): boolean {
+    if (role === UserRole.OWNER) {
+      return false;
+    }
+    return defaultTeamPermissionsForRole(role)[key];
+  }
+
+  teamPermissionControlDisabled(key: TeamPermissionKey): boolean {
+    const u = this.teamPermissionsUser();
+    const d = this.teamPermsDraft();
+    if (!u || !d || u.role === UserRole.OWNER) {
+      return true;
+    }
+    if (!this.canToggleTeamPermission(key, u.role)) {
+      return true;
+    }
+    if (
+      u.role === UserRole.VIEWER &&
+      key === 'editAssignedTasks' &&
+      !d.viewTasks
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  toggleTeamPermission(key: TeamPermissionKey): void {
+    const u = this.teamPermissionsUser();
+    const d = this.teamPermsDraft();
+    if (!u || !d || u.role === UserRole.OWNER) {
+      return;
+    }
+    if (this.teamPermissionControlDisabled(key)) {
+      return;
+    }
+    const next = { ...d, [key]: !d[key] };
+    if (u.role === UserRole.VIEWER && key === 'viewTasks' && !next.viewTasks) {
+      next.editAssignedTasks = false;
+    }
+    this.teamPermsDraft.set(next);
+  }
+
+  saveTeamPermissions(): void {
+    const u = this.teamPermissionsUser();
+    const d = this.teamPermsDraft();
+    if (!u || !d || u.role === UserRole.OWNER || this.teamPermsSaving()) {
+      return;
+    }
+    this.teamPermsSaving.set(true);
+    this.usersApi.updateTeamPermissions(u.id, d).subscribe({
+      next: (updated) => {
+        this.orgUsers.update((list) =>
+          list.map((x) => (x.id === updated.id ? { ...x, ...updated } : x))
+        );
+        this.closeTeamPermissionsModal();
+      },
+      error: () => this.teamPermsSaving.set(false),
     });
   }
 

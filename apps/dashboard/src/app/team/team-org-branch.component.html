@@ -33,7 +33,9 @@
         <tbody class="text-slate-300">
           @for (u of node().users; track u.id) {
             <tr
-              class="border-b border-slate-800/60 transition last:border-0 hover:bg-slate-900/50"
+              class="cursor-pointer border-b border-slate-800/60 transition last:border-0 hover:bg-slate-900/50"
+              (click)="openPermissions.emit(u)"
+              title="Open permission matrix"
             >
               <td class="px-4 py-3 font-medium text-white sm:px-5">{{ u.name }}</td>
               <td class="max-w-[200px] truncate px-4 py-3 text-slate-400 sm:px-5" [title]="u.email">{{ u.email }}</td>
@@ -55,7 +57,7 @@
                   <button
                     type="button"
                     class="rounded-lg border border-emerald-800/50 bg-emerald-950/25 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:border-emerald-600/60 hover:bg-emerald-950/45"
-                    (click)="promote.emit(u)"
+                    (click)="$event.stopPropagation(); promote.emit(u)"
                   >
                     Promote to Admin
                   </button>
@@ -63,7 +65,7 @@
                   <button
                     type="button"
                     class="rounded-lg border border-amber-800/50 bg-amber-950/20 px-3 py-1.5 text-xs font-medium text-amber-200 transition hover:border-amber-600/50 hover:bg-amber-950/40"
-                    (click)="demote.emit(u)"
+                    (click)="$event.stopPropagation(); demote.emit(u)"
                   >
                     Demote to Viewer
                   </button>
@@ -94,6 +96,7 @@
             [node]="c"
             (promote)="promote.emit($event)"
             (demote)="demote.emit($event)"
+            (openPermissions)="openPermissions.emit($event)"
           />
         </div>
       }

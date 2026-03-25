@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Machine- and human-readable catalog of the Turbo secure task management application.
+  Generated from codebase structure; align with README for operational steps.
+-->
+<application name="Turbo — Secure Task Management" type="Nx monorepo">
+  <summary>
+    Multi-tenant task board with organization hierarchy, JWT authentication,
+    role-based access control (Owner, Admin, Viewer), audit logging, and an Angular
+    dashboard with Kanban-style workflows. Backend: NestJS + TypeORM + SQLite.
+    Frontend: Angular (standalone components) + Tailwind CSS.
+  </summary>
+
+  <workspace>
+    <project path="apps/api" kind="nestjs-api">
+      <description>REST API with global prefix /api. Global JwtAuthGuard; @Public() for login.</description>
+      <build-serve>npx nx run api:build | npx nx run api:serve</build-serve>
+    </project>
+    <project path="apps/dashboard" kind="angular-spa">
+      <description>Browser client; dev server proxies /api to backend.</description>
+      <build-serve>npx nx run dashboard:build | npx nx run dashboard:serve</build-serve>
+    </project>
+    <project path="libs/data" kind="typescript-library">
+      <description>Shared enums, interfaces, team-permission helpers (no Nest/Angular).</description>
+    </project>
+    <project path="libs/auth" kind="typescript-library">
+      <description>JWT payload types, RequestUser, @Public, @Roles, ROLES_KEY for reflector.</description>
+    </project>
+    <project path="apps/api-e2e" kind="jest-e2e">
+      <description>HTTP e2e against running API (login smoke).</description>
+    </project>
+    <project path="apps/dashboard-e2e" kind="playwright">
+      <description>Browser e2e; minimal landing/login heading check.</description>
+    </project>
+  </workspace>
+
+  <configuration>
+    <env-file>.env (copy from .env.example)</env-file>
+    <variables>
+      <var name="JWT_SECRET" required="true">Symmetric secret for signing access tokens.</var>
+      <var name="JWT_EXPIRES_SEC">Token TTL in seconds; non-numeric falls back to 28800 in AuthModule.</var>
+      <var name="DB_PATH">SQLite file path (default data/taskmgmt.sqlite).</var>
+      <var name="PORT">API port (default 3000).</var>
+      <var name="CORS_ORIGIN">Comma-separated browser origins for CORS.</var>
+    </variables>
+    <frontend-proxy path="apps/dashboard/proxy.conf.json">
+      <rule path="/api" target="http://localhost:3000" changeOrigin="true"/>
+    </frontend-proxy>
+  </configuration>
+
+  <persistence>
+    <engine>SQLite via TypeORM</engine>
+    <synchronize>true (development convenience; production should use migrations)</synchronize>
+    <entities>
+      <entity name="Organization">
+        <fields>id (uuid), name, parentOrganizationId nullable, createdAt, updatedAt</fields>
+        <behavior>Self-referential tree (parent/children). Seed: Acme Corp → Engineering, Marketing.</behavior>
+      </entity>
+      <entity name="User">
+        <fields>id, name, email unique, passwordHash, role (OWNER|ADMIN|VIEWER), organizationId FK,
+          teamPermissionOverrides nullable JSON (team matrix UI), createdAt, updatedAt</fields>
+      </entity>
+      <entity name="Task">
+        <fields>title, description, status, priority, category, dueDate nullable, sortOrder,
+          creatorId, assigneeId nullable, organizationId, createdAt, updatedAt, deletedAt (soft delete)</fields>
+      </entity>
+      <entity name="AuditLog">
+        <fields>userId, organizationId, action, resourceType, resourceId nullable, result, metadata JSON nullable, createdAt</fields>
+      </entity>
+    </entities>
+  </persistence>
+
+  <bootstrap-and-seed>
+    <component class="SeedService" trigger="OnApplicationBootstrap">
+      <behavior>
+        Idempotent ensure of demo orgs (Acme Corp, Engineering, Marketing) and demo users
+        (three roles per org) with bcrypt password password123. Updates user display names when seed definition changes.
+        Inserts sample tasks only when task table is empty.
+      </behavior>
+    </component>
+  </bootstrap-and-seed>
+
+  <authentication>
+    <mechanism>JWT bearer tokens</mechanism>
+    <public-endpoints>
+      <endpoint method="POST" path="/api/auth/login">Validates email/password (bcrypt); returns access_token and user summary.</endpoint>
+    </public-endpoints>
+    <protected-pattern>Authorization: Bearer &lt;token&gt; on all other API routes unless @Public()</protected-pattern>
+    <jwt-payload sub="user id" includes="email, organizationId, role in token claims (AuthService); JwtStrategy validate reloads User from DB by sub for RequestUser."/>
+    <strategy class="JwtStrategy">passport-jwt from Authorization header; secret JWT_SECRET.</strategy>
+    <guard class="JwtAuthGuard" global="true">Skips JWT when handler/class has @Public().</guard>
+  </authentication>
+
+  <authorization>
+    <guard class="RolesGuard" scope="Applied on Users, Tasks, Organizations, AuditLog controllers">
+      <rule>If no @Roles metadata, any authenticated user passes.</rule>
+      <rule>Otherwise user rank must be &gt;= required role: VIEWER=1, ADMIN=2, OWNER=3 (Owner satisfies ADMIN routes).</rule>
+    </guard>
+    <organization-scope service="OrganizationScopeService">
+      <viewer-admin>visibleOrganizationIds returns only actor.organizationId.</viewer-admin>
+      <owner>visibleOrganizationIds returns recursive subtree starting at actor.organizationId.</owner>
+      <used-by>Tasks list/get/update/delete; user listing; audit listing; assignee validation; team permission updates.</used-by>
+    </organization-scope>
+    <matrix-ui note="team_permission_overrides">
+      Owner-only PATCH persists a clamped permission map per user for Team tab UI.
+      Task and audit enforcement remain role-based; flags are not read by TasksService for authorization today.
+    </matrix-ui>
+  </authorization>
+
+  <domain-rules>
+    <tasks service="TasksService">
+      <create requires="ADMIN rank (Owner ok)">New task organizationId set to user.organizationId (creator home org).</create>
+      <list>All non-deleted tasks in visibleOrganizationIds; optional query status, category; ordered by sortOrder, createdAt.</list>
+      <get-one>Must be in scope.</get-one>
+      <update>
+        <admin-owner>May change fields per DTO; assignee must be in visible org ids; status transitions validated (non-viewer allowed targets OPEN, IN_PROGRESS, DONE, VERIFIED).</admin-owner>
+        <viewer>Only if task.assigneeId === user.userId; only status and sortOrder in body; cannot set VERIFIED; transitions only OPEN→IN_PROGRESS or IN_PROGRESS→DONE; cannot change assignee.</viewer>
+      </update>
+      <delete requires="ADMIN rank">Soft remove task; audit DELETE_TASK.</delete>
+      <response-enrichment>organizationName attached for display when listing/single task.</response-enrichment>
+    </tasks>
+    <users service="UsersService">
+      <list requires="ADMIN rank">Members in visibleOrganizationIds; includes organizationName; includes teamPermissionOverrides.</list>
+      <patch-role requires="OWNER">Target in scope; cannot change OWNER; cannot change self; only ADMIN or VIEWER; clears teamPermissionOverrides on success; audit UPDATE_USER_ROLE.</patch-role>
+      <patch-team-permissions requires="OWNER">Target in scope; not for OWNER users; body.permissions nested booleans; server clamps to role max; audit UPDATE_USER_TEAM_PERMISSIONS.</patch-team-permissions>
+    </users>
+    <organizations>GET tree rows (id, name, parentOrganizationId) for visible scope; ADMIN rank.</organizations>
+    <audit-log>List recent entries for visible org scope with resolved userName, userEmail, organizationName where possible; ADMIN rank.</audit-log>
+  </domain-rules>
+
+  <api-endpoints base="/api">
+    <endpoint method="POST" path="auth/login" auth="public" body="email, password" response="access_token, user"/>
+    <endpoint method="GET" path="auth/me" auth="jwt"/>
+    <endpoint method="POST" path="tasks" auth="jwt" roles="ADMIN" body="CreateTaskDto"/>
+    <endpoint method="GET" path="tasks" auth="jwt" query="status?, category?"/>
+    <endpoint method="GET" path="tasks/:id" auth="jwt"/>
+    <endpoint method="PUT" path="tasks/:id" auth="jwt" body="UpdateTaskDto"/>
+    <endpoint method="DELETE" path="tasks/:id" auth="jwt" roles="ADMIN"/>
+    <endpoint method="GET" path="audit-log" auth="jwt" roles="ADMIN"/>
+    <endpoint method="GET" path="users" auth="jwt" roles="VIEWER (min rank)"/>
+    <endpoint method="GET" path="organizations" auth="jwt" roles="ADMIN"/>
+    <endpoint method="PATCH" path="users/:id/role" auth="jwt" roles="OWNER" body="role ADMIN|VIEWER"/>
+    <endpoint method="PATCH" path="users/:id/team-permissions" auth="jwt" roles="OWNER" body="permissions { flags }"/>
+  </api-endpoints>
+
+  <shared-data-lib path="libs/data">
+    <enums>
+      <enum name="UserRole">OWNER, ADMIN, VIEWER</enum>
+      <enum name="TaskStatus">OPEN, IN_PROGRESS, DONE, VERIFIED</enum>
+      <enum name="TaskPriority">LOW, MEDIUM, HIGH</enum>
+      <enum name="TaskCategory">FEATURE, BUG, IMPROVEMENT, RESEARCH, MAINTENANCE</enum>
+    </enums>
+    <interfaces>AuthUserView, OrganizationTreeRow, OrgUserView, TaskView, AuditLogView</interfaces>
+    <team-permissions>
+      <keys>viewTasks, editAssignedTasks, createTasks, editAnyTask, deleteTasks, verifyTasks, viewAuditLog, manageTeam</keys>
+      <functions>defaultTeamPermissionsForRole, clampTeamPermissions, effectiveTeamPermissions</functions>
+    </team-permissions>
+  </shared-data-lib>
+
+  <frontend path="apps/dashboard">
+    <routing>
+      <route path="/login" component="LoginComponent"/>
+      <route path="/dashboard" component="DashboardComponent" guard="authGuard"/>
+      <route path="" redirectTo="dashboard"/>
+    </routing>
+    <auth>
+      <storage>localStorage for token and user snapshot</storage>
+      <interceptor>Attaches Bearer token to HttpClient requests</interceptor>
+    </auth>
+    <services>
+      <service name="AuthService">login, logout, me, token/user signals</service>
+      <service name="TasksApiService">CRUD tasks, audit log GET</service>
+      <service name="UsersApiService">list users, patch role, patch team-permissions</service>
+      <service name="OrganizationsApiService">list org tree rows</service>
+    </services>
+    <dashboard-features>
+      <feature>Kanban columns by TaskStatus with Angular CDK drag-drop; connected lists omit VERIFIED column for viewers</feature>
+      <feature>Category filter; create/edit modals with assignee select from org users</feature>
+      <feature>Verify and delete (elevated); delete confirmation modal</feature>
+      <feature>Audit log panel for Admin/Owner</feature>
+      <feature>Team tab for Owner only: nested org branches, promote/demote Admin↔Viewer, row click opens permission matrix modal</feature>
+      <feature>Login page with demo account tables by org</feature>
+    </dashboard-features>
+    <styling>Tailwind CSS; dark theme layouts</styling>
+  </frontend>
+
+  <audit-events recorded="true">
+    <examples>CREATE_TASK, UPDATE_TASK, DELETE_TASK, UPDATE_USER_ROLE, UPDATE_USER_TEAM_PERMISSIONS, and related success metadata</examples>
+  </audit-events>
+
+  <scripts path="scripts">
+    <script file="seed-mock-tasks.mjs">Optional extra mock tasks for local demos</script>
+    <script file="update-demo-user-names.mjs">Align DB user display names with seed naming scheme</script>
+  </scripts>
+
+  <testing>
+    <unit location="apps/api/src/app/auth/roles.guard.spec.ts">RolesGuard rank and forbidden cases</unit>
+    <unit location="libs/data/src/lib/enums.spec.ts">Enum string contract</unit>
+    <unit location="libs/auth/src/lib/auth.lib.spec.ts">ROLES_KEY constant</unit>
+    <unit location="apps/dashboard/src/app/app.spec.ts">Root App component creates</unit>
+    <e2e location="apps/api-e2e/src/api/api.spec.ts">POST /api/auth/login demo admin returns token</e2e>
+    <e2e location="apps/dashboard-e2e/src/example.spec.ts">Playwright: unauthenticated / shows login heading</e2e>
+  </testing>
+
+  <operational-notes>
+    <note>API and dashboard must both run for full UI; proxy forwards /api to PORT 3000.</note>
+    <note>Invalid JWT_EXPIRES_SEC historically caused login 500; AuthModule defensively parses numeric TTL.</note>
+    <note>SQLite file path ensured (mkdir) before TypeORM connects.</note>
+  </operational-notes>
+
+  <future-work>
+    <item>Wire team_permission_overrides into task/audit authorization alongside UserRole; mirror in UI.</item>
+    <item>Migrations instead of synchronize; refresh tokens; expanded automated tests.</item>
+  </future-work>
+</application>

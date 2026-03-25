@@ -36,6 +36,10 @@ export class User {
   @Column()
   organizationId: string;
 
+  /** Optional mock permission matrix for Team UI (clamped to role). */
+  @Column({ type: 'simple-json', nullable: true, name: 'team_permission_overrides' })
+  teamPermissionOverrides: Record<string, boolean> | null;
+
   @OneToMany(() => Task, (task) => task.creator)
   createdTasks: Task[];
 

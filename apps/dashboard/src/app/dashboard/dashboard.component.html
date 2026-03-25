@@ -251,7 +251,7 @@
               cdkDropList
               [id]="'list-' + status"
               [cdkDropListData]="columns()[status]"
-              [cdkDropListConnectedTo]="connectedLists()"
+              [cdkDropListConnectedTo]="connectedListsForColumn(status)"
               (cdkDropListDropped)="drop($event, status)"
               class="flex flex-1 flex-col gap-3 p-2.5"
             >
@@ -403,6 +403,7 @@
               [node]="root"
               (promote)="promoteToAdmin($event)"
               (demote)="demoteToViewer($event)"
+              (openPermissions)="openTeamPermissionsModal($event)"
             />
           } @empty {
             <p
@@ -893,5 +894,121 @@
         </div>
       </div>
     </div>
+  }
+
+  @if (teamPermissionsUser(); as pu) {
+    @if (teamPermsDraft(); as draft) {
+      <div
+        class="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm"
+        (click)="closeTeamPermissionsModal()"
+        role="presentation"
+      >
+        <div
+          class="max-h-[min(90vh,640px)] w-full max-w-lg overflow-hidden rounded-2xl border border-violet-900/35 bg-gradient-to-b from-slate-900 to-slate-950 shadow-2xl shadow-black/50 ring-1 ring-violet-500/15"
+          (click)="$event.stopPropagation()"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="team-perms-title"
+        >
+          <div
+            class="border-b border-slate-800/80 bg-violet-950/25 px-6 py-5"
+          >
+            <div class="flex items-start gap-4">
+              <div
+                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-violet-950/50 ring-1 ring-violet-800/45"
+                aria-hidden="true"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-violet-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <div class="min-w-0 flex-1">
+                <h2
+                  id="team-perms-title"
+                  class="text-lg font-semibold tracking-tight text-white"
+                >
+                  Permission matrix
+                </h2>
+                <p class="mt-1 truncate text-sm text-slate-400" [title]="pu.email">
+                  {{ pu.name }} · {{ pu.email }}
+                </p>
+                <p class="mt-2 text-xs text-slate-500">
+                  <span
+                    class="inline-flex rounded-md px-2 py-0.5 font-semibold uppercase tracking-wide ring-1"
+                    [ngClass]="{
+                      'bg-violet-950/55 text-violet-200 ring-violet-800/45': pu.role === UserRole.OWNER,
+                      'bg-sky-950/50 text-sky-200 ring-sky-800/40': pu.role === UserRole.ADMIN,
+                      'bg-slate-800/90 text-slate-300 ring-slate-700/50': pu.role === UserRole.VIEWER
+                    }"
+                    >{{ pu.role }}</span
+                  >
+                  @if (pu.organizationName) {
+                    <span class="ml-2 text-slate-500">· {{ pu.organizationName }}</span>
+                  }
+                </p>
+              </div>
+              <button
+                type="button"
+                class="shrink-0 rounded-lg p-2 text-slate-500 transition hover:bg-slate-800 hover:text-slate-300"
+                (click)="closeTeamPermissionsModal()"
+                aria-label="Close"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div
+            class="max-h-[min(52vh,380px)] space-y-1 overflow-y-auto px-6 py-4"
+          >
+            @for (key of teamPermissionKeys; track key) {
+              <label
+                class="flex cursor-pointer items-start gap-3 rounded-xl border border-transparent px-3 py-2.5 transition hover:border-slate-800/80 hover:bg-slate-950/50"
+                [class.opacity-50]="teamPermissionControlDisabled(key)"
+                [class.cursor-default]="teamPermissionControlDisabled(key)"
+              >
+                <input
+                  type="checkbox"
+                  class="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-600 bg-slate-950 text-violet-500 focus:ring-violet-500/40 focus:ring-offset-0 focus:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+                  [checked]="draft[key]"
+                  [disabled]="teamPermsSaving() || teamPermissionControlDisabled(key)"
+                  (change)="toggleTeamPermission(key)"
+                />
+                <span class="text-sm leading-snug text-slate-200">
+                  {{ teamPermissionLabels[key] }}
+                </span>
+              </label>
+            }
+          </div>
+          <div class="space-y-3 border-t border-slate-800/80 bg-slate-950/40 px-6 py-4">
+            <p class="text-xs leading-relaxed text-slate-500">
+              Mock overlay stored per user; the API still enforces access from
+              <strong class="font-medium text-slate-400">role</strong> (Owner ≥ Admin ≥ Viewer). Use this to document intent or demo finer-grained policy.
+            </p>
+            <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+              <button
+                type="button"
+                class="rounded-lg border border-slate-700 bg-transparent px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:border-slate-600 hover:bg-slate-800/80 disabled:opacity-50"
+                [disabled]="teamPermsSaving()"
+                (click)="closeTeamPermissionsModal()"
+              >
+                {{ pu.role === UserRole.OWNER ? 'Close' : 'Cancel' }}
+              </button>
+              @if (pu.role !== UserRole.OWNER) {
+                <button
+                  type="button"
+                  class="rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-950/35 transition hover:bg-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/40 disabled:opacity-60"
+                  [disabled]="teamPermsSaving()"
+                  (click)="saveTeamPermissions()"
+                >
+                  {{ teamPermsSaving() ? 'Saving…' : 'Save permissions' }}
+                </button>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+    }
   }
 </div>

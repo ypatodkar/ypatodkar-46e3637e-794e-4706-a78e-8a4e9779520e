@@ -5,6 +5,7 @@
   "scripts": {
     "serve:api": "nx run api:serve",
     "serve:dashboard": "nx run dashboard:serve",
+    "serve:dev": "nx run-many -t serve -p api,dashboard --parallel=2",
     "build": "nx run-many -t build --projects=api,dashboard,data,auth",
     "test": "nx run-many -t test --projects=api,dashboard,data,auth",
     "update-demo-user-names": "node scripts/update-demo-user-names.mjs",

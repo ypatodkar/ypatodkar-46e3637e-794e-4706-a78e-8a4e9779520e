@@ -1,4 +1,5 @@
 import type { TaskCategory, TaskPriority, TaskStatus, UserRole } from './enums';
+import type { TeamPermissionMap } from './team-permissions';
 
 export interface AuthUserView {
   id: string;
@@ -23,6 +24,8 @@ export interface OrgUserView {
   role: UserRole;
   organizationId: string;
   organizationName?: string;
+  /** Mock permission overlay; merged with role defaults on the server when present. */
+  teamPermissionOverrides?: TeamPermissionMap | null;
 }
 
 export interface TaskView {
